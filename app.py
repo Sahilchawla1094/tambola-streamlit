@@ -86,6 +86,38 @@ div.stButton > button { font-family:'Nunito',sans-serif!important; font-weight:8
 .stTextInput > div > div > input:focus { border-color:#f5a623!important; box-shadow:0 0 0 2px rgba(245,166,35,.15)!important; }
 hr { border-color:rgba(245,166,35,.12)!important; }
 .stAlert { border-radius:12px!important; }
+
+/* ── Mobile responsive ── */
+@media (max-width: 640px) {
+    .block-container { padding-left: 0.6rem !important; padding-right: 0.6rem !important; padding-top: 1rem !important; }
+    h1 { font-size: 2rem !important; }
+    h2 { font-size: 1.4rem !important; }
+    .num-display { font-size: 3rem !important; }
+    .code-value  { font-size: 2rem !important; letter-spacing: 6px !important; }
+    .tambola-card { padding: 16px !important; border-radius: 12px !important; }
+    .code-box { padding: 14px !important; }
+    .numboard { gap: 3px !important; padding: 7px !important; }
+    .n-chip   { font-size: clamp(9px, 2.8vw, 12px) !important; }
+
+    /* Stack all column layouts vertically.
+       Ticket rows (9 cols) are restored to horizontal by the JS tighten() call. */
+    [data-testid="stHorizontalBlock"] {
+        flex-direction: column !important;
+        gap: 6px !important;
+    }
+    [data-testid="stHorizontalBlock"] > [data-testid="column"] {
+        width: 100% !important;
+        flex: none !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+
+    /* Full-width buttons on mobile */
+    div.stButton > button { width: 100% !important; }
+
+    /* Prize row: wrap long winner names */
+    .prize-winner { white-space: normal !important; font-size: .75rem !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -223,8 +255,15 @@ def render_interactive_ticket(grid, called_set: set, marked_set: set, pid: str):
                 doc.querySelectorAll('[data-testid="stHorizontalBlock"]').forEach(function(blk){
                     var cols = blk.querySelectorAll(':scope>[data-testid="column"]');
                     if(cols.length !== 9) return;
-                    blk.style.gap = '3px'; blk.style.padding = '0 4px 4px';
-                    cols.forEach(function(c){ c.style.paddingLeft='1px'; c.style.paddingRight='1px'; c.style.minWidth='0'; });
+                    /* Override the mobile flex-direction:column rule for ticket rows */
+                    blk.style.flexDirection = 'row';
+                    blk.style.flexWrap = 'nowrap';
+                    blk.style.gap = '3px';
+                    blk.style.padding = '0 4px 4px';
+                    cols.forEach(function(c){
+                        c.style.paddingLeft='1px'; c.style.paddingRight='1px';
+                        c.style.minWidth='0'; c.style.width='auto'; c.style.flex='1';
+                    });
                 });
             }
             tighten(); setTimeout(tighten,300); setTimeout(tighten,800);
