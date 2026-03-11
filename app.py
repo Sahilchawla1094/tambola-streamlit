@@ -57,18 +57,7 @@ h1,h2,h3 { font-family: 'Cinzel', serif !important; color: #f5a623 !important; }
 .num-label    { color: #5550a0; font-size: .75rem; letter-spacing: 2px; text-transform: uppercase; text-align: center; }
 .num-progress { color: #5550a0; font-size: .8rem; text-align: center; margin-top: 4px; }
 
-/* ── Ticket cell buttons ── */
-div[data-testid="column"] div.stButton > button {
-    padding: 2px 0 !important; min-height: 38px !important;
-    font-size: clamp(10px, 2vw, 14px) !important; font-weight: 800 !important;
-    border-radius: 7px !important; width: 100% !important; line-height: 1 !important;
-    transition: all .2s !important;
-}
-.cell-marked  > div > button { background:#2ecc71!important; border-color:#27ae60!important; color:#fff!important; box-shadow:0 0 8px rgba(46,204,113,.5)!important; }
-.cell-callable> div > button { background:#1e1a40!important; border:1.5px solid rgba(245,166,35,.5)!important; color:#f5a623!important; }
-.cell-callable> div > button:hover { background:rgba(245,166,35,.15)!important; border-color:#f5a623!important; transform:scale(1.08)!important; }
-.cell-uncalled> div > button { background:#13102a!important; border:1px solid rgba(255,255,255,.06)!important; color:#5050a0!important; cursor:not-allowed!important; }
-.cell-corner  > div > button { border-color:#f5a623!important; border-width:2px!important; }
+/* Ticket cell buttons are styled via JavaScript injection in render_interactive_ticket */
 
 .numboard { display:grid; grid-template-columns:repeat(10,1fr); gap:4px; background:#110e28; border:1px solid rgba(245,166,35,.18); border-radius:12px; padding:10px; }
 .n-chip     { aspect-ratio:1; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:clamp(8px,1.5vw,11px); font-weight:700; }
@@ -162,46 +151,86 @@ def render_interactive_ticket(grid, called_set: set, marked_set: set, pid: str):
     marked_cnt = len(marked_set)
     called_on_ticket = sum(1 for n in game.all_numbers(grid) if n in called_set)
 
+    # ── Ticket header ────────────────────────────────────────────────────────────
+    col_headers = "".join(
+        f'<div style="text-align:center;font-size:9px;color:#4a4080;font-weight:700;padding:2px 0">{h}</div>'
+        for h in ["1–9","10–19","20–29","30–39","40–49","50–59","60–69","70–79","80–90"]
+    )
     st.markdown(f"""
-    <div style="border:2px solid #f5a623;border-radius:14px;overflow:hidden;margin:8px 0">
-      <div style="background:linear-gradient(90deg,#f5a623,#e84545);padding:7px 16px;
-                  display:flex;justify-content:space-between;font-family:serif;
-                  font-weight:700;font-size:.85rem;color:#1a0800;">
+    <div style="border:2px solid #f5a623;border-radius:14px;overflow:hidden;margin:8px 0 4px">
+      <div style="background:linear-gradient(90deg,#f5a623,#e84545);padding:8px 16px;
+                  display:flex;justify-content:space-between;align-items:center;
+                  font-weight:800;font-size:.85rem;color:#1a0800;">
         <span>🎟 MY TICKET</span>
         <span>✅ {marked_cnt} marked &nbsp;|&nbsp; 📢 {called_on_ticket} called</span>
       </div>
-      <div style="background:#0a0815;padding:6px;">
+      <div style="background:#0d0a20;padding:4px 6px 2px;
+                  display:grid;grid-template-columns:repeat(9,1fr);gap:3px">
+        {col_headers}
+      </div>
+    </div>
     """, unsafe_allow_html=True)
 
+    # ── Per-button CSS using Streamlit's automatic st-key-{key} class ───────────
+    # Streamlit adds class="... st-key-{key} ..." to every keyed widget's container,
+    # so [class*="st-key-tc_..."] button reliably targets exactly that button.
+    BASE = ("width:100%!important;padding:0!important;min-height:48px!important;"
+            "font-size:clamp(10px,2.8vw,15px)!important;font-weight:800!important;"
+            "border-radius:6px!important;white-space:nowrap!important;"
+            "overflow:hidden!important;line-height:1!important;")
+    css = []
+    for ri, row in enumerate(grid):
+        for ci, num in enumerate(row):
+            k = f"tc_{pid}_{ri}_{ci}"
+            sel = f'[class*="st-key-{k}"] button'
+            is_corner = num in corners
+            if num == 0:
+                color = "background:#06040f!important;border:1px solid rgba(255,255,255,.04)!important;color:transparent!important;pointer-events:none!important;cursor:default!important;"
+            elif num in marked_set:
+                ex = "outline:2px solid #f5a623!important;outline-offset:-3px!important;" if is_corner else ""
+                color = f"background:#2ecc71!important;border:2px solid #27ae60!important;color:#fff!important;box-shadow:0 0 10px rgba(46,204,113,.5)!important;{ex}"
+            elif num in called_set:
+                color = "background:#1e1a40!important;border:2px solid #f5a623!important;color:#f5a623!important;cursor:pointer!important;"
+            else:
+                color = "background:#13102a!important;border:1px solid rgba(255,255,255,.07)!important;color:#5050a0!important;cursor:not-allowed!important;"
+            css.append(f"{sel}{{{BASE}{color}}}")
+    st.markdown(f"<style>{''.join(css)}</style>", unsafe_allow_html=True)
+
+    # ── Button rows ──────────────────────────────────────────────────────────────
     for ri, row in enumerate(grid):
         cols = st.columns(9, gap="small")
         for ci, num in enumerate(row):
             with cols[ci]:
-                is_corner = num in corners
                 if num == 0:
-                    st.markdown('<div class="cell-uncalled">', unsafe_allow_html=True)
                     st.button(" ", key=f"tc_{pid}_{ri}_{ci}", disabled=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
                 elif num in marked_set:
-                    css = "cell-marked" + (" cell-corner" if is_corner else "")
-                    st.markdown(f'<div class="{css}">', unsafe_allow_html=True)
-                    if st.button(f"✓{num}", key=f"tc_{pid}_{ri}_{ci}"):
+                    if st.button(str(num), key=f"tc_{pid}_{ri}_{ci}"):
                         ss.marked_numbers.discard(num); st.rerun()
-                    st.markdown('</div>', unsafe_allow_html=True)
                 elif num in called_set:
-                    css = "cell-callable" + (" cell-corner" if is_corner else "")
-                    st.markdown(f'<div class="{css}">', unsafe_allow_html=True)
                     if st.button(str(num), key=f"tc_{pid}_{ri}_{ci}"):
                         ss.marked_numbers.add(num); st.rerun()
-                    st.markdown('</div>', unsafe_allow_html=True)
                 else:
-                    css = "cell-uncalled" + (" cell-corner" if is_corner else "")
-                    st.markdown(f'<div class="{css}">', unsafe_allow_html=True)
                     st.button(str(num), key=f"tc_{pid}_{ri}_{ci}", disabled=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown('</div></div>', unsafe_allow_html=True)
-    st.markdown('<p class="ticket-hint">💡 <b style="color:#f5a623">Gold</b> = tap to mark &nbsp;·&nbsp; <b style="color:#2ecc71">Green</b> = tap to unmark &nbsp;·&nbsp; Grey = not called yet</p>', unsafe_allow_html=True)
+    st.markdown('<p class="ticket-hint">💡 <b style="color:#f5a623">Gold border</b> = tap to mark &nbsp;·&nbsp; <b style="color:#2ecc71">Green</b> = tap to unmark &nbsp;·&nbsp; Dim = not called yet</p>', unsafe_allow_html=True)
+
+    # ── JS: tighten column gaps only (styling is handled by CSS above) ───────────
+    components.html("""<script>
+    (function(){
+        try {
+            var doc = window.parent.document;
+            function tighten(){
+                doc.querySelectorAll('[data-testid="stHorizontalBlock"]').forEach(function(blk){
+                    var cols = blk.querySelectorAll(':scope>[data-testid="column"]');
+                    if(cols.length !== 9) return;
+                    blk.style.gap = '3px'; blk.style.padding = '0 4px 4px';
+                    cols.forEach(function(c){ c.style.paddingLeft='1px'; c.style.paddingRight='1px'; c.style.minWidth='0'; });
+                });
+            }
+            tighten(); setTimeout(tighten,300); setTimeout(tighten,800);
+        } catch(e) {}
+    })();
+    </script>""", height=0)
 
 
 def render_number_board(called_nums):
