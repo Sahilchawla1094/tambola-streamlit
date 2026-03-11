@@ -99,13 +99,15 @@ hr { border-color:rgba(245,166,35,.12)!important; }
     .numboard { gap: 3px !important; padding: 7px !important; }
     .n-chip   { font-size: clamp(9px, 2.8vw, 12px) !important; }
 
-    /* Stack all column layouts vertically.
-       Ticket rows (9 cols) are restored to horizontal by the JS tighten() call. */
-    [data-testid="stHorizontalBlock"] {
+    /* Stack 2- and 3-col layouts vertically, but EXCLUDE 9-col ticket rows.
+       :not(:has(> [data-testid="column"]:nth-child(9))) matches any horizontal block
+       that does NOT have a 9th direct column child — i.e. everything except ticket rows. */
+    [data-testid="stHorizontalBlock"]:not(:has(> [data-testid="column"]:nth-child(9))) {
         flex-direction: column !important;
         gap: 6px !important;
     }
-    [data-testid="stHorizontalBlock"] > [data-testid="column"] {
+    [data-testid="stHorizontalBlock"]:not(:has(> [data-testid="column"]:nth-child(9)))
+        > [data-testid="column"] {
         width: 100% !important;
         flex: none !important;
         padding-left: 0 !important;
