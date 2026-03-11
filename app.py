@@ -9,7 +9,6 @@ Features:
 """
 
 import streamlit as st
-import streamlit.components.v1 as components
 import uuid
 from streamlit_autorefresh import st_autorefresh
 
@@ -154,27 +153,31 @@ ss = st.session_state
 
 # ── Speech helper ──────────────────────────────────────────────────────────────
 def announce_number(num, enabled: bool = True):
-    """Speak the number twice via browser Web Speech API (host device only)."""
+    """Speak the number twice via Web Speech API, injected into Streamlit's main frame.
+
+    Uses <img onerror> to run JS in the main frame instead of a sandboxed
+    components.html iframe — this is the only reliable way to reach
+    speechSynthesis on mobile browsers (iOS Safari blocks it in iframes).
+    """
     if not enabled or num is None or ss.last_spoken_num == num:
         return
     ss.last_spoken_num = num
-    components.html(f"""
-    <script>
-    (function() {{
-        window.speechSynthesis.cancel();
-        function say(text, onDone) {{
-            var u = new SpeechSynthesisUtterance(text);
-            u.lang = 'en-IN'; u.rate = 0.78; u.pitch = 1.05; u.volume = 1.0;
-            if (onDone) u.onend = onDone;
-            window.speechSynthesis.speak(u);
-        }}
-        // Say "Number X" then after a pause say "X" again
-        say("Number {num}", function() {{
-            setTimeout(function() {{ say("{num}"); }}, 650);
-        }});
-    }})();
-    </script>
-    """, height=0)
+    js = (
+        "if(window.speechSynthesis){"
+        "window.speechSynthesis.cancel();"
+        "var u=new SpeechSynthesisUtterance('Number " + str(num) + "');"
+        "u.lang='en-IN';u.rate=0.78;u.pitch=1.05;u.volume=1.0;"
+        "u.onend=function(){setTimeout(function(){"
+        "var u2=new SpeechSynthesisUtterance('" + str(num) + "');"
+        "u2.lang='en-IN';u2.rate=0.78;u2.pitch=1.05;u2.volume=1.0;"
+        "window.speechSynthesis.speak(u2);},650)};"
+        "window.speechSynthesis.speak(u);}"
+    )
+    js_attr = js.replace('&', '&amp;').replace('"', '&quot;')
+    st.markdown(
+        f'<img src=":)?t={num}" onerror="{js_attr}" style="display:none">',
+        unsafe_allow_html=True,
+    )
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -371,8 +374,25 @@ elif ss.screen == "host_game":
 
     st.markdown("## 🎙️ Caller Board")
 
-    # Speech toggle in top-right
-    _, col_tog = st.columns([4, 1])
+    # Speech toggle + mobile audio unlock button
+    col_unlock, col_tog = st.columns([4, 1])
+    with col_unlock:
+        # iOS Safari requires a direct user tap to unlock speechSynthesis.
+        # This button runs entirely in JS (no Streamlit rerun) so the tap
+        # counts as a genuine user gesture and unlocks audio for the session.
+        st.markdown("""
+        <button onclick="
+            var u=new SpeechSynthesisUtterance('Audio on');
+            u.lang='en-IN';u.volume=1.0;
+            window.speechSynthesis.speak(u);
+            this.innerHTML='🔊 Audio unlocked';
+            this.style.borderColor='#2ecc71';
+            this.style.color='#2ecc71';
+        " style="background:#0a0815;color:#f5a623;border:1.5px solid #f5a623;
+                 border-radius:8px;padding:5px 14px;font-weight:700;cursor:pointer;
+                 font-size:.8rem;font-family:Nunito,sans-serif;">
+            🔊 Tap to enable audio
+        </button>""", unsafe_allow_html=True)
     with col_tog:
         ss.speech_enabled = st.toggle("🔊", value=ss.speech_enabled,
                                       help="Announce each number twice through your device speaker")
