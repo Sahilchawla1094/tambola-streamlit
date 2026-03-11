@@ -10,6 +10,7 @@ Features:
 
 import streamlit as st
 import uuid
+import streamlit.components.v1 as components
 from streamlit_autorefresh import st_autorefresh
 
 import db, game
@@ -153,31 +154,60 @@ ss = st.session_state
 
 # ── Speech helper ──────────────────────────────────────────────────────────────
 def announce_number(num, enabled: bool = True):
-    """Speak the number twice via Web Speech API, injected into Streamlit's main frame.
+    """Speak the number twice via Web Speech API inside a components.html iframe.
 
-    Uses <img onerror> to run JS in the main frame instead of a sandboxed
-    components.html iframe — this is the only reliable way to reach
-    speechSynthesis on mobile browsers (iOS Safari blocks it in iframes).
+    On Android/Desktop: auto-speaks on iframe load.
+    On iOS Safari: shows a visible tap button (iOS blocks speechSynthesis unless
+    the call is directly inside a user gesture handler within the iframe).
+    Note: st.markdown inline JS is blocked by Streamlit Cloud's CSP — only
+    components.html iframes bypass that policy.
     """
     if not enabled or num is None or ss.last_spoken_num == num:
         return
     ss.last_spoken_num = num
-    js = (
-        "if(window.speechSynthesis){"
-        "window.speechSynthesis.cancel();"
-        "var u=new SpeechSynthesisUtterance('Number " + str(num) + "');"
-        "u.lang='en-IN';u.rate=0.78;u.pitch=1.05;u.volume=1.0;"
-        "u.onend=function(){setTimeout(function(){"
-        "var u2=new SpeechSynthesisUtterance('" + str(num) + "');"
-        "u2.lang='en-IN';u2.rate=0.78;u2.pitch=1.05;u2.volume=1.0;"
-        "window.speechSynthesis.speak(u2);},650)};"
-        "window.speechSynthesis.speak(u);}"
-    )
-    js_attr = js.replace('&', '&amp;').replace('"', '&quot;')
-    st.markdown(
-        f'<img src=":)?t={num}" onerror="{js_attr}" style="display:none">',
-        unsafe_allow_html=True,
-    )
+    components.html(f"""<!DOCTYPE html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{background:transparent;font-family:system-ui,sans-serif;
+      display:flex;align-items:center;height:44px;padding:0 6px;gap:8px}}
+#btn{{background:#f5a623;color:#1a0800;border:none;border-radius:8px;
+      padding:6px 14px;font-weight:800;font-size:14px;cursor:pointer;
+      display:none;flex-shrink:0}}
+#msg{{color:#2ecc71;font-size:13px;font-weight:700;display:none}}
+</style></head>
+<body>
+<button id="btn">🔊 Tap to announce: {num}</button>
+<span id="msg"></span>
+<script>
+var N={num}, done=false;
+var isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)&&!window.MSStream;
+function speak(){{
+  if(done)return; done=true;
+  window.speechSynthesis&&window.speechSynthesis.cancel();
+  var u=new SpeechSynthesisUtterance("Number "+N);
+  u.lang="en-IN";u.rate=0.78;u.pitch=1.05;u.volume=1.0;
+  u.onend=function(){{setTimeout(function(){{
+    var u2=new SpeechSynthesisUtterance(String(N));
+    u2.lang="en-IN";u2.rate=0.78;u2.pitch=1.05;u2.volume=1.0;
+    window.speechSynthesis&&window.speechSynthesis.speak(u2);
+  }},650)}};
+  window.speechSynthesis&&window.speechSynthesis.speak(u);
+  document.getElementById("btn").style.display="none";
+  var m=document.getElementById("msg");
+  m.style.display="inline";m.textContent="🔊 "+N;
+  setTimeout(function(){{m.style.display="none"}},3000);
+}}
+if(isIOS){{
+  // iOS requires the speak() call to happen inside a direct user tap on THIS iframe
+  var b=document.getElementById("btn");
+  b.style.display="inline";
+  b.addEventListener("click",speak);
+}}else{{
+  // Android / Desktop: auto-speak after a short delay
+  setTimeout(speak,150);
+}}
+</script></body></html>""", height=50)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -374,25 +404,8 @@ elif ss.screen == "host_game":
 
     st.markdown("## 🎙️ Caller Board")
 
-    # Speech toggle + mobile audio unlock button
-    col_unlock, col_tog = st.columns([4, 1])
-    with col_unlock:
-        # iOS Safari requires a direct user tap to unlock speechSynthesis.
-        # This button runs entirely in JS (no Streamlit rerun) so the tap
-        # counts as a genuine user gesture and unlocks audio for the session.
-        st.markdown("""
-        <button onclick="
-            var u=new SpeechSynthesisUtterance('Audio on');
-            u.lang='en-IN';u.volume=1.0;
-            window.speechSynthesis.speak(u);
-            this.innerHTML='🔊 Audio unlocked';
-            this.style.borderColor='#2ecc71';
-            this.style.color='#2ecc71';
-        " style="background:#0a0815;color:#f5a623;border:1.5px solid #f5a623;
-                 border-radius:8px;padding:5px 14px;font-weight:700;cursor:pointer;
-                 font-size:.8rem;font-family:Nunito,sans-serif;">
-            🔊 Tap to enable audio
-        </button>""", unsafe_allow_html=True)
+    # Speech toggle
+    _, col_tog = st.columns([4, 1])
     with col_tog:
         ss.speech_enabled = st.toggle("🔊", value=ss.speech_enabled,
                                       help="Announce each number twice through your device speaker")
