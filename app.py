@@ -57,12 +57,21 @@ h1,h2,h3 { font-family: 'Cinzel', serif !important; color: #f5a623 !important; }
 .num-label    { color: #5550a0; font-size: .75rem; letter-spacing: 2px; text-transform: uppercase; text-align: center; }
 .num-progress { color: #5550a0; font-size: .8rem; text-align: center; margin-top: 4px; }
 
-/* Ticket cell buttons are styled via JavaScript injection in render_interactive_ticket */
-
-.numboard { display:grid; grid-template-columns:repeat(10,1fr); gap:4px; background:#110e28; border:1px solid rgba(245,166,35,.18); border-radius:12px; padding:10px; }
+/* ── Number board ── */
+.numboard   { display:grid; grid-template-columns:repeat(10,1fr); gap:4px; background:#110e28; border:1px solid rgba(245,166,35,.18); border-radius:12px; padding:10px; }
 .n-chip     { aspect-ratio:1; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:clamp(8px,1.5vw,11px); font-weight:700; }
 .n-uncalled { background:rgba(255,255,255,.04); color:#4a4480; }
 .n-called   { background:#f5a623; color:#1a0800; box-shadow:0 0 8px rgba(245,166,35,.35); }
+
+/* ── Ticket board (same style as number board) ── */
+.ticket-board { display:grid; grid-template-columns:repeat(9,1fr); gap:5px; background:#110e28; border:2px solid #f5a623; border-radius:12px; padding:10px; }
+.t-chip       { aspect-ratio:1; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:clamp(10px,2.5vw,15px); font-weight:800; line-height:1; }
+.t-blank      { background:rgba(255,255,255,.02); border:1px solid rgba(255,255,255,.04); }
+.t-uncalled   { background:rgba(255,255,255,.04); color:#4a4480; border:1px solid rgba(255,255,255,.06); }
+.t-called     { background:#1e1a40; border:2px solid #f5a623; color:#f5a623; box-shadow:0 0 6px rgba(245,166,35,.2); }
+.t-marked     { background:#2ecc71; border:2px solid #27ae60; color:#fff; box-shadow:0 0 10px rgba(46,204,113,.5); }
+.t-corner.t-called  { outline:2px solid #fff; outline-offset:-3px; }
+.t-corner.t-marked  { outline:2px solid #f5a623; outline-offset:-3px; }
 
 .prize-row   { display:flex; align-items:center; gap:12px; background:#13102a; border:1px solid #2a2445; border-radius:10px; padding:10px 14px; margin-bottom:7px; transition:all .2s; }
 .prize-won   { border-color:#2ecc71!important; background:rgba(46,204,113,.07)!important; }
@@ -182,96 +191,55 @@ def save(r):
 # ── Interactive ticket ─────────────────────────────────────────────────────────
 def render_interactive_ticket(grid, called_set: set, marked_set: set, pid: str):
     corners = set(game.corner_numbers(grid))
+    all_nums = game.all_numbers(grid)
     marked_cnt = len(marked_set)
-    called_on_ticket = sum(1 for n in game.all_numbers(grid) if n in called_set)
+    called_on_ticket = sum(1 for n in all_nums if n in called_set)
 
-    # ── Ticket header ────────────────────────────────────────────────────────────
-    col_headers = "".join(
-        f'<div style="text-align:center;font-size:9px;color:#4a4080;font-weight:700;padding:2px 0">{h}</div>'
-        for h in ["1–9","10–19","20–29","30–39","40–49","50–59","60–69","70–79","80–90"]
-    )
+    # ── Header ───────────────────────────────────────────────────────────────────
     st.markdown(f"""
-    <div style="border:2px solid #f5a623;border-radius:14px;overflow:hidden;margin:8px 0 4px">
-      <div style="background:linear-gradient(90deg,#f5a623,#e84545);padding:8px 16px;
-                  display:flex;justify-content:space-between;align-items:center;
-                  font-weight:800;font-size:.85rem;color:#1a0800;">
-        <span>🎟 MY TICKET</span>
-        <span>✅ {marked_cnt} marked &nbsp;|&nbsp; 📢 {called_on_ticket} called</span>
-      </div>
-      <div style="background:#0d0a20;padding:4px 6px 2px;
-                  display:grid;grid-template-columns:repeat(9,1fr);gap:3px">
-        {col_headers}
-      </div>
+    <div style="background:linear-gradient(90deg,#f5a623,#e84545);
+                border-radius:12px 12px 0 0;padding:8px 14px;
+                display:flex;justify-content:space-between;align-items:center;
+                font-weight:800;font-size:.85rem;color:#1a0800;margin-bottom:-4px">
+      <span>🎟 MY TICKET</span>
+      <span>✅ {marked_cnt} marked &nbsp;|&nbsp; 📢 {called_on_ticket} called</span>
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Per-button CSS using Streamlit's automatic st-key-{key} class ───────────
-    # Streamlit adds class="... st-key-{key} ..." to every keyed widget's container,
-    # so [class*="st-key-tc_..."] button reliably targets exactly that button.
-    BASE = ("width:100%!important;padding:0!important;min-height:48px!important;"
-            "font-size:clamp(10px,2.8vw,15px)!important;font-weight:800!important;"
-            "border-radius:6px!important;white-space:nowrap!important;"
-            "overflow:hidden!important;line-height:1!important;")
-    css = []
-    for ri, row in enumerate(grid):
-        for ci, num in enumerate(row):
-            k = f"tc_{pid}_{ri}_{ci}"
-            sel = f'[class*="st-key-{k}"] button'
+    # ── Ticket grid (pure HTML — same approach as number board) ──────────────────
+    cells = []
+    for row in grid:
+        for num in row:
             is_corner = num in corners
+            corner_cls = " t-corner" if is_corner else ""
             if num == 0:
-                color = "background:#06040f!important;border:1px solid rgba(255,255,255,.04)!important;color:transparent!important;pointer-events:none!important;cursor:default!important;"
+                cells.append('<div class="t-chip t-blank"></div>')
             elif num in marked_set:
-                ex = "outline:2px solid #f5a623!important;outline-offset:-3px!important;" if is_corner else ""
-                color = f"background:#2ecc71!important;border:2px solid #27ae60!important;color:#fff!important;box-shadow:0 0 10px rgba(46,204,113,.5)!important;{ex}"
+                cells.append(f'<div class="t-chip t-marked{corner_cls}">✓{num}</div>')
             elif num in called_set:
-                color = "background:#1e1a40!important;border:2px solid #f5a623!important;color:#f5a623!important;cursor:pointer!important;"
+                cells.append(f'<div class="t-chip t-called{corner_cls}">{num}</div>')
             else:
-                color = "background:#13102a!important;border:1px solid rgba(255,255,255,.07)!important;color:#5050a0!important;cursor:not-allowed!important;"
-            css.append(f"{sel}{{{BASE}{color}}}")
-    st.markdown(f"<style>{''.join(css)}</style>", unsafe_allow_html=True)
+                cells.append(f'<div class="t-chip t-uncalled">{num}</div>')
+    st.markdown(f'<div class="ticket-board">{"".join(cells)}</div>', unsafe_allow_html=True)
 
-    # ── Button rows ──────────────────────────────────────────────────────────────
-    for ri, row in enumerate(grid):
-        cols = st.columns(9, gap="small")
-        for ci, num in enumerate(row):
-            with cols[ci]:
-                if num == 0:
-                    st.button(" ", key=f"tc_{pid}_{ri}_{ci}", disabled=True)
-                elif num in marked_set:
-                    if st.button(str(num), key=f"tc_{pid}_{ri}_{ci}"):
+    # ── Action buttons: called numbers on ticket ──────────────────────────────────
+    # Only show buttons for numbers that are called AND on the ticket
+    actionable = sorted(n for n in all_nums if n in called_set)
+    if actionable:
+        st.markdown('<p class="ticket-hint" style="margin-top:8px;margin-bottom:4px">Tap a number below to mark / unmark it on your ticket:</p>', unsafe_allow_html=True)
+        n_cols = min(5, len(actionable))
+        cols = st.columns(n_cols)
+        for i, num in enumerate(actionable):
+            with cols[i % n_cols]:
+                if num in marked_set:
+                    if st.button(f"✓ {num}", key=f"tc_{pid}_{num}", use_container_width=True):
                         ss.marked_numbers.discard(num); st.rerun()
-                elif num in called_set:
-                    if st.button(str(num), key=f"tc_{pid}_{ri}_{ci}"):
-                        ss.marked_numbers.add(num); st.rerun()
                 else:
-                    st.button(str(num), key=f"tc_{pid}_{ri}_{ci}", disabled=True)
-
-    st.markdown('<p class="ticket-hint">💡 <b style="color:#f5a623">Gold border</b> = tap to mark &nbsp;·&nbsp; <b style="color:#2ecc71">Green</b> = tap to unmark &nbsp;·&nbsp; Dim = not called yet</p>', unsafe_allow_html=True)
-
-    # ── JS: tighten column gaps only (styling is handled by CSS above) ───────────
-    components.html("""<script>
-    (function(){
-        try {
-            var doc = window.parent.document;
-            function tighten(){
-                doc.querySelectorAll('[data-testid="stHorizontalBlock"]').forEach(function(blk){
-                    var cols = blk.querySelectorAll(':scope>[data-testid="column"]');
-                    if(cols.length !== 9) return;
-                    /* Override the mobile flex-direction:column rule for ticket rows */
-                    blk.style.flexDirection = 'row';
-                    blk.style.flexWrap = 'nowrap';
-                    blk.style.gap = '3px';
-                    blk.style.padding = '0 4px 4px';
-                    cols.forEach(function(c){
-                        c.style.paddingLeft='1px'; c.style.paddingRight='1px';
-                        c.style.minWidth='0'; c.style.width='auto'; c.style.flex='1';
-                    });
-                });
-            }
-            tighten(); setTimeout(tighten,300); setTimeout(tighten,800);
-        } catch(e) {}
-    })();
-    </script>""", height=0)
+                    if st.button(str(num), key=f"tc_{pid}_{num}",
+                                 use_container_width=True, type="primary"):
+                        ss.marked_numbers.add(num); st.rerun()
+    else:
+        st.markdown('<p class="ticket-hint">Waiting for numbers to be called…</p>', unsafe_allow_html=True)
 
 
 def render_number_board(called_nums):
